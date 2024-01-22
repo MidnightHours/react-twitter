@@ -1,22 +1,34 @@
-import { useState, Fragment } from "react";
+//import react
+import {
+  Fragment,
+  useEffect,
+  useReducer,
+  lazy,
+  Suspense,
+  useCallback,
+} from "react";
 
 import Title from "../../component/title";
 import Grid from "../../component/grid";
 import Box from "../../component/box";
-import { LOAD_STATUS, Alert, Skeleton } from "../../component/load";
+import { Alert, Skeleton } from "../../component/load";
 
 import PostCreate from "../post-create";
-import PostItem from "../post-item";
 
 import { getDate } from "../../util/getDate";
+import {
+  requestInitialState,
+  requestReducer,
+  REQUEST_ACTION_TYPE,
+} from "../../util/request";
+
+const PostItem = lazy(() => import("../post-item"));
 
 export default function Container() {
-  const [status, setStatus] = useState(null);
-  const [message, setMessage] = useState("");
-  const [data, setData] = useState(null);
+  const [state, dispatch] = useReducer(requestReducer, requestInitialState);
 
-  const getData = async () => {
-    setStatus(LOAD_STATUS.PROGRESS);
+  const getData = useCallback(async () => {
+    dispatch({ type: REQUEST_ACTION_TYPE.PROGRESS });
 
     try {
       const res = await fetch("http://localhost:4000/post-list");
@@ -24,17 +36,23 @@ export default function Container() {
       const data = await res.json();
 
       if (res.ok) {
-        setData(convertData(data));
-        setStatus(LOAD_STATUS.SUCCESS);
+        dispatch({
+          type: REQUEST_ACTION_TYPE.SUCCESS,
+          payload: convertData(data),
+        });
       } else {
-        setMessage(data.message);
-        setStatus(LOAD_STATUS.ERROR);
+        dispatch({
+          type: REQUEST_ACTION_TYPE.ERROR,
+          payload: data.message,
+        });
       }
     } catch (error) {
-      setMessage(error.message);
-      setStatus(LOAD_STATUS.ERROR);
+      dispatch({
+        type: REQUEST_ACTION_TYPE.ERROR,
+        payload: error.message,
+      });
     }
-  };
+  }, []);
 
   const convertData = (raw) => ({
     list: raw.list.reverse().map(({ id, username, text, date }) => ({
@@ -47,9 +65,9 @@ export default function Container() {
     isEmpty: raw.list.length === 0,
   });
 
-  if (status === null) {
+  useEffect(() => {
     getData();
-  }
+  }, []);
 
   return (
     <Grid>
@@ -64,7 +82,7 @@ export default function Container() {
         </Grid>
       </Box>
 
-      {status === LOAD_STATUS.PROGRESS && (
+      {state.status === REQUEST_ACTION_TYPE.PROGRESS && (
         <Fragment>
           <Box>
             <Skeleton />
@@ -75,18 +93,26 @@ export default function Container() {
         </Fragment>
       )}
 
-      {status === LOAD_STATUS.ERROR && (
-        <Alert status={status} message={message} />
+      {state.status === REQUEST_ACTION_TYPE.ERROR && (
+        <Alert status={state.status} message={state.message} />
       )}
 
-      {status === LOAD_STATUS.SUCCESS && (
+      {state.status === REQUEST_ACTION_TYPE.SUCCESS && (
         <Fragment>
-          {data.isEmpty ? (
+          {state.data.isEmpty ? (
             <Alert message="Список постів пустий" />
           ) : (
-            data.list.map((item) => (
+            state.data.list.map((item) => (
               <Fragment key={item.id}>
-                <PostItem {...item} />
+                <Suspense
+                  fallback={
+                    <Box>
+                      <Skeleton />
+                    </Box>
+                  }
+                >
+                  <PostItem {...item} />
+                </Suspense>
               </Fragment>
             ))
           )}

@@ -1,45 +1,54 @@
-import { useState, Fragment } from "react";
+import { useState, Fragment, useEffect, useReducer, useCallback } from "react";
 
 import Box from "../../component/box";
 import Grid from "../../component/grid";
 import PostContent from "../../component/post-content";
-import { LOAD_STATUS, Alert, Skeleton } from "../../component/load";
+import { Alert, Skeleton } from "../../component/load";
 
 import PostCreate from "../post-create";
 
 import { getDate } from "../../util/getDate";
+import {
+  requestInitialState,
+  requestReducer,
+  REQUEST_ACTION_TYPE,
+} from "../../util/request";
 
 export default function Container({ id, username, text, date }) {
-  const [status, setStatus] = useState(null);
-  const [message, setMessage] = useState("");
-  const [data, setData] = useState({
-    id,
-    username,
-    text,
-    date,
-    reply: null,
-  });
+  const [state, dispatch] = useReducer(
+    requestReducer,
+    requestInitialState,
+    (state) => ({ ...state, data: { id, username, text, date, reply: null } })
+  );
 
-  const getData = async () => {
-    setStatus(LOAD_STATUS.PROGRESS);
+  const getData = useCallback(async () => {
+    dispatch({ type: REQUEST_ACTION_TYPE.PROGRESS });
 
     try {
-      const res = await fetch(`http://localhost:4000/post-item?id=${data.id}`);
+      const res = await fetch(
+        `http://localhost:4000/post-item?id=${state.data.id}`
+      );
 
       const resData = await res.json();
 
       if (res.ok) {
-        setData(convertData(resData));
-        setStatus(LOAD_STATUS.SUCCESS);
+        dispatch({
+          type: REQUEST_ACTION_TYPE.SUCCESS,
+          payload: convertData(resData),
+        });
       } else {
-        setMessage(data.message);
-        setStatus(LOAD_STATUS.ERROR);
+        dispatch({
+          type: REQUEST_ACTION_TYPE.ERROR,
+          payload: resData.message,
+        });
       }
     } catch (error) {
-      setMessage(error.message);
-      setStatus(LOAD_STATUS.ERROR);
+      dispatch({
+        type: REQUEST_ACTION_TYPE.ERROR,
+        payload: error.message,
+      });
     }
-  };
+  }, [state.data.id]);
 
   const convertData = ({ post }) => ({
     id: post.id,
@@ -60,20 +69,22 @@ export default function Container({ id, username, text, date }) {
   const [isOpen, setOpen] = useState(false);
 
   const handleOpen = () => {
-    if (status === null) {
-      getData();
-    }
-
     setOpen(!isOpen);
   };
+
+  useEffect(() => {
+    if (isOpen === true) {
+      getData();
+    }
+  }, [isOpen]);
 
   return (
     <Box style={{ padding: "0" }}>
       <div style={{ padding: "20px", cursor: "pointer" }} onClick={handleOpen}>
         <PostContent
-          username={data.username}
-          date={data.date}
-          text={data.text}
+          username={state.data.username}
+          date={state.data.date}
+          text={state.data.text}
         />
       </div>
 
@@ -84,12 +95,12 @@ export default function Container({ id, username, text, date }) {
               <PostCreate
                 placeholder="Post your reply!"
                 button="Reply"
-                id={data.id}
+                id={state.data.id}
                 onCreate={getData}
               />
             </Box>
 
-            {status === LOAD_STATUS.PROGRESS && (
+            {state.status === REQUEST_ACTION_TYPE.PROGRESS && (
               <Fragment>
                 <Box>
                   <Skeleton />
@@ -100,14 +111,14 @@ export default function Container({ id, username, text, date }) {
               </Fragment>
             )}
 
-            {status === LOAD_STATUS.ERROR && (
-              <Alert status={status} message={message} />
+            {state.status === REQUEST_ACTION_TYPE.ERROR && (
+              <Alert status={state.status} message={state.message} />
             )}
 
-            {status === LOAD_STATUS.SUCCESS && (
+            {state.status === REQUEST_ACTION_TYPE.SUCCESS && (
               <Fragment>
-                {!data.isEmpty === true &&
-                  data.reply.map((item) => (
+                {!state.data.isEmpty === true &&
+                  state.data.reply.map((item) => (
                     <Fragment key={item.id}>
                       <PostContent {...item} />
                     </Fragment>
